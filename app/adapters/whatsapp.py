@@ -1,6 +1,9 @@
+import requests
+
 from app.storage.redis import get_session, save_session, clear_session
 from app.services.ticket_engine import run_intake_engine
 from app.services.ticket_repository import insert_ticket
+from app.core.config import settings
 
 
 QUESTION_MAP = {
@@ -10,6 +13,31 @@ QUESTION_MAP = {
 }
 
 
+# =========================================================
+# META CLOUD API — SEND MESSAGE
+# =========================================================
+def send_whatsapp_message(to: str, text: str):
+    url = f"https://graph.facebook.com/v19.0/{settings.meta_phone_number_id}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {settings.meta_access_token}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "text",
+        "text": {"body": text},
+    }
+
+    resp = requests.post(url, headers=headers, json=payload)
+    print("META SEND RESPONSE:", resp.status_code, resp.text)
+
+
+# =========================================================
+# WHATSAPP INTAKE HANDLER (STABLE)
+# =========================================================
 def handle_whatsapp_message(
     session_id: str,
     message_text: str,
@@ -29,21 +57,20 @@ def handle_whatsapp_message(
     expected_field = session_data.get("expected_field")
 
     # =========================
-    # CASE 1: Expecting a reply to a specific question
+    # CASE 1: Expecting a reply
     # =========================
     if expected_field:
-        # Save ONLY the expected field
         session_data[expected_field] = message_text
         session_data.pop("expected_field", None)
 
         ticket = run_intake_engine(
             source="whatsapp",
-            raw_text=None,              # ⛔ DO NOT re-run LLM
+            raw_text=None,        # DO NOT re-run LLM
             existing_data=session_data
         )
 
     # =========================
-    # CASE 2: Fresh or free-form message
+    # CASE 2: Fresh message
     # =========================
     else:
         ticket = run_intake_engine(
@@ -53,7 +80,7 @@ def handle_whatsapp_message(
         )
 
     # =========================
-    # SUBMITTED → SAVE & RESET SESSION
+    # SUBMITTED → SAVE & RESET
     # =========================
     if ticket.status == "submitted":
         insert_ticket(ticket.model_dump(mode="json"))
@@ -67,7 +94,7 @@ def handle_whatsapp_message(
         )
 
     # =========================
-    # ASK NEXT REQUIRED FIELD
+    # ASK NEXT QUESTION
     # =========================
     next_field = ticket.missing_fields[0]
 
