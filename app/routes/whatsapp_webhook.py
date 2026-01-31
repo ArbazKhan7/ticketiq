@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Request, Response
 from app.adapters.whatsapp import handle_whatsapp_message
 from app.core.config import settings
+from app.adapters.meta_sender import send_whatsapp_message
+
 
 router = APIRouter()
 
@@ -50,6 +52,12 @@ async def receive_whatsapp_message(request: Request):
         session_id=from_number,
         message_text=text,
         sender_number=from_number,
+    )
+
+    # 🔥 SEND BACK TO WHATSAPP
+    send_whatsapp_message(
+    to_number=from_number,
+    message=reply
     )
 
     return Response(status_code=200)
